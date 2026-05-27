@@ -1,0 +1,19 @@
+{
+  "name": "web-uart",
+  "version": "1.0.0",
+  "description": "现代化网页串口调试助手 (Web UART)",
+  "main": "index.html",
+  "scripts": {
+    "start": "npx -y http-server -p 3000 -c-1",
+    "dev": "npx -y http-server -p 3000 -c-1"
+  },
+  "keywords": [
+    "serial",
+    "uart",
+    "web-serial",
+    "chrome",
+    "tool"
+  ],
+  "author": "Antigravity",
+  "license": "MIT"
+}

@@ -1,0 +1,381 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Web UART - 现代化网页串口调试助手</title>
+    <meta name="description" content="基于 Web Serial API 的现代化网页串口调试助手。无需安装，即开即用，支持 HEX/文本收发、定时发送、快捷指令存储等功能。">
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div id="unsupported-browser-overlay" class="overlay hidden">
+        <div class="overlay-card">
+            <div class="overlay-icon">
+                <svg viewBox="0 0 24 24" width="48" height="48" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/>
+                    <line x1="12" y1="9" x2="12" y2="13"/>
+                    <line x1="12" y1="17" x2="12.01" y2="17"/>
+                </svg>
+            </div>
+            <h2>浏览器不支持 Web Serial API</h2>
+            <p>本应用需要使用原生串口通信接口，目前仅支持 <strong>Google Chrome</strong>, <strong>Microsoft Edge</strong> 或其他基于 Chromium 内核的现代浏览器。</p>
+            <p>请复制此页面链接并在上述浏览器中打开。</p>
+        </div>
+    </div>
+
+    <div class="app-container">
+        <!-- Sidebar: Configuration & Status -->
+        <aside class="sidebar">
+            <div class="brand">
+                <div class="logo">
+                    <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="url(#logo-grad)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                        <defs>
+                            <linearGradient id="logo-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+                                <stop offset="0%" stop-color="#38bdf8" />
+                                <stop offset="100%" stop-color="#a855f7" />
+                            </linearGradient>
+                        </defs>
+                        <circle cx="12" cy="6" r="1"/>
+                        <path d="M6 14a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2"/>
+                        <path d="M12 22v-4"/>
+                        <path d="M12 12a4 4 0 0 0 4-4V5H8v3a4 4 0 0 0 4 4Z"/>
+                    </svg>
+                </div>
+                <h1>Web UART</h1>
+                <span class="version">v1.0.0</span>
+            </div>
+
+            <!-- Serial Settings Panel -->
+            <div class="panel">
+                <div class="panel-header">
+                    <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <rect x="4" y="4" width="16" height="16" rx="2"/>
+                        <rect x="9" y="9" width="6" height="6"/>
+                        <path d="M9 1v3M15 1v3M9 20v3M15 20v3M20 9h3M20 15h3M1 9h3M1 15h3"/>
+                    </svg>
+                    <span>串口配置</span>
+                </div>
+                <div class="panel-body">
+                    <div class="form-group select-port-group">
+                        <button id="btn-select-port" class="btn btn-primary btn-full">
+                            <svg class="icon-inline" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z"/>
+                                <polyline points="3.27 6.96 12 12.01 20.73 6.96"/>
+                                <line x1="12" y1="22.08" x2="12" y2="12"/>
+                            </svg>
+                            选择串口设备
+                        </button>
+                        <div id="selected-port-info" class="port-status-text">未选择设备</div>
+                    </div>
+
+                    <div class="form-grid">
+                        <div class="form-group full-width">
+                            <label for="baudrate">波特率</label>
+                            <div class="select-wrapper">
+                                <select id="baudrate">
+                                    <option value="9600">9600</option>
+                                    <option value="115200" selected>115200</option>
+                                    <option value="19200">19200</option>
+                                    <option value="38400">38400</option>
+                                    <option value="57600">57600</option>
+                                    <option value="921600">921600</option>
+                                    <option value="custom">自定义</option>
+                                </select>
+                            </div>
+                            <input type="number" id="custom-baudrate" class="input hidden" placeholder="波特率">
+                        </div>
+
+                        <!-- Collapsible Advanced Config (Data bits, Parity, Stop bits & Flow Control) -->
+                        <details class="advanced-signals-details full-width">
+                            <summary class="details-summary">
+                                <span>高级串口配置</span>
+                                <svg class="chevron-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <polyline points="6 9 12 15 18 9"/>
+                                </svg>
+                            </summary>
+                            <div class="advanced-config-content">
+                                <!-- 8-N-1 Compact Inline config -->
+                                <div class="form-group-triple">
+                                    <div class="form-group">
+                                        <label for="databits">数据</label>
+                                        <div class="select-wrapper">
+                                            <select id="databits">
+                                                <option value="8" selected>8</option>
+                                                <option value="7">7</option>
+                                                <option value="6">6</option>
+                                                <option value="5">5</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="parity">校验</label>
+                                        <div class="select-wrapper">
+                                            <select id="parity">
+                                                <option value="none" selected>None</option>
+                                                <option value="even">Even</option>
+                                                <option value="odd">Odd</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="stopbits">停止</label>
+                                        <div class="select-wrapper">
+                                            <select id="stopbits">
+                                                <option value="1" selected>1</option>
+                                                <option value="2">2</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <div class="form-group" style="margin-top: 12px; margin-bottom: 0;">
+                                    <label for="flowcontrol">流控制</label>
+                                    <div class="select-wrapper">
+                                        <select id="flowcontrol">
+                                            <option value="none" selected>None</option>
+                                            <option value="hardware">RTS/CTS (硬件)</option>
+                                        </select>
+                                    </div>
+                                </div>
+                            </div>
+                        </details>
+                    </div>
+
+                    <div class="port-actions">
+                        <button id="btn-toggle-port" class="btn btn-success btn-full" disabled>
+                            <svg class="icon-inline" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M18.36 6.64a9 9 0 11-12.73 0M12 2v10"/>
+                            </svg>
+                            打开串口
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Signal & State Control Panel -->
+            <div class="panel">
+                <div class="panel-header">
+                    <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M22 12h-4l-3 9L9 3l-3 9H2"/>
+                    </svg>
+                    <span>信号与状态监控</span>
+                </div>
+                <div class="panel-body">
+                    <details class="advanced-signals-details">
+                        <summary class="details-summary">
+                            <span>高级信号引脚 (DTR/RTS)</span>
+                            <svg class="chevron-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <polyline points="6 9 12 15 18 9"/>
+                            </svg>
+                        </summary>
+                        <div class="signal-controls">
+                            <label class="switch-container">
+                                <input type="checkbox" id="chk-dtr" disabled>
+                                <span class="slider"></span>
+                                <span class="label-text">DTR (数据就绪)</span>
+                            </label>
+                            <label class="switch-container">
+                                <input type="checkbox" id="chk-rts" disabled>
+                                <span class="slider"></span>
+                                <span class="label-text">RTS (请求发送)</span>
+                            </label>
+                        </div>
+                    </details>
+
+                    <hr class="divider">
+
+                    <div class="status-metrics">
+                        <div class="metric-row">
+                            <span class="metric-label">连接状态:</span>
+                            <div class="status-led-wrapper">
+                                <span id="status-led" class="led led-red"></span>
+                                <span id="status-text" class="metric-value">已断开</span>
+                            </div>
+                        </div>
+                        <div class="metric-row">
+                            <span class="metric-label">已接收 (RX):</span>
+                            <span id="metric-rx" class="metric-value code-font">0 Bytes</span>
+                        </div>
+                        <div class="metric-row">
+                            <span class="metric-label">已发送 (TX):</span>
+                            <span id="metric-tx" class="metric-value code-font">0 Bytes</span>
+                        </div>
+                    </div>
+                    
+                    <button id="btn-reset-metrics" class="btn btn-secondary btn-full btn-sm">
+                        <svg class="icon-inline" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                            <path d="M3 12a9 9 0 019-9 9.75 9.75 0 016.74 2.74L21 8"/>
+                            <path d="M21 3v5h-5"/>
+                            <path d="M21 12a9 9 0 01-9 9 9.75 9.75 0 01-6.74-2.74L3 16"/>
+                            <path d="M3 21v-5h5"/>
+                        </svg>
+                        重置计数器
+                    </button>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Main Content Area: Console Logs & Input -->
+        <main class="main-content">
+            <!-- Console Box -->
+            <div class="panel console-panel">
+                <div class="panel-header console-header">
+                    <div class="header-left">
+                        <span class="terminal-dots">
+                            <span class="dot dot-red"></span>
+                            <span class="dot dot-yellow"></span>
+                            <span class="dot dot-green"></span>
+                        </span>
+                        <span class="panel-title">串口数据监控终端</span>
+                        <div id="rx-flash" class="rx-flash-indicator">RX ACTIVE</div>
+                    </div>
+                    <div class="header-actions">
+                        <div class="toggle-group">
+                            <button id="btn-rx-hex" class="toggle-btn" title="切换 HEX/TEXT 接收模式">HEX</button>
+                            <button id="btn-rx-text" class="toggle-btn active" title="切换 HEX/TEXT 接收模式">TXT</button>
+                        </div>
+                        <label class="checkbox-container" title="显示接收时间">
+                            <input type="checkbox" id="chk-timestamp" checked>
+                            <span class="checkmark"></span>
+                            <span>时间戳</span>
+                        </label>
+                        <label class="checkbox-container" title="复制终端日志时是否包含时间戳与收发标识">
+                            <input type="checkbox" id="chk-copy-timestamp">
+                            <span class="checkmark"></span>
+                            <span>复制带时间</span>
+                        </label>
+                        <label class="checkbox-container" title="自动滚屏到最下方">
+                            <input type="checkbox" id="chk-autoscroll" checked>
+                            <span class="checkmark"></span>
+                            <span>自动滚动</span>
+                        </label>
+                        <label class="checkbox-container" title="暂停屏幕数据更新但不断开串口">
+                            <input type="checkbox" id="chk-pause">
+                            <span class="checkmark"></span>
+                            <span>暂停显示</span>
+                        </label>
+                        <div class="button-separator"></div>
+                        <button id="btn-copy-log" class="btn btn-secondary btn-icon" title="复制选中数据 (未选择时默认复制全部数据)">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+                                <path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/>
+                            </svg>
+                        </button>
+                        <button id="btn-export-log" class="btn btn-secondary btn-icon" title="导出日志到文件">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
+                                <polyline points="7 10 12 15 17 10"/>
+                                <line x1="12" y1="15" x2="12" y2="3"/>
+                            </svg>
+                        </button>
+                        <button id="btn-clear-log" class="btn btn-danger btn-icon" title="清除屏幕记录">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <polyline points="3 6 5 6 21 6"/>
+                                <path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/>
+                                <line x1="10" y1="11" x2="10" y2="17"/>
+                                <line x1="14" y1="11" x2="14" y2="17"/>
+                            </svg>
+                        </button>
+                    </div>
+                </div>
+                <div class="panel-body console-body">
+                    <div id="terminal-container" class="terminal-screen"></div>
+                </div>
+            </div>
+
+            <!-- Send Configuration & Input Box -->
+            <div class="panel send-panel">
+                <div class="panel-header">
+                    <div class="header-left">
+                        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <line x1="22" y1="2" x2="11" y2="13"/>
+                            <polygon points="22 2 15 22 11 13 2 9 22 2"/>
+                        </svg>
+                        <span>数据发送区</span>
+                        <div id="tx-flash" class="tx-flash-indicator">TX ACTIVE</div>
+                    </div>
+                    <div class="header-actions">
+                        <div class="toggle-group">
+                            <button id="btn-tx-hex" class="toggle-btn" title="使用 HEX 十六进制发送数据">HEX</button>
+                            <button id="btn-tx-text" class="toggle-btn active" title="使用纯文本模式发送数据">TXT</button>
+                        </div>
+                        <div class="select-wrapper select-sm inline-select">
+                            <select id="line-ending" title="选择发送数据的换行符后缀">
+                                <option value="none" selected>无换行符</option>
+                                <option value="lf">\n (LF)</option>
+                                <option value="cr">\r (CR)</option>
+                                <option value="crlf">\r\n (CR+LF)</option>
+                            </select>
+                        </div>
+                        <div class="button-separator"></div>
+                        <label class="checkbox-container" title="开启周期循环自动发送">
+                            <input type="checkbox" id="chk-auto-send">
+                            <span class="checkmark"></span>
+                            <span>自动发送</span>
+                        </label>
+                        <input type="number" id="auto-send-interval" class="input input-inline-num" value="1000" min="10" title="循环周期(毫秒)">
+                        <span class="unit-label">ms</span>
+                    </div>
+                </div>
+                <div class="panel-body send-body">
+                    <div class="send-input-group">
+                        <textarea id="tx-textarea" placeholder="输入要发送的数据... (十六进制模式下仅支持: 0-9, A-F, a-f 以及空格分割，例: 01 03 00 00 00 02 C4 0B)" rows="3" disabled></textarea>
+                        <div class="send-actions-group">
+                            <button id="btn-send" class="btn btn-primary" disabled>
+                                <span>发送</span>
+                                <svg class="icon-inline" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <line x1="22" y1="2" x2="11" y2="13"/>
+                                    <polygon points="22 2 15 22 11 13 2 9 22 2"/>
+                                </svg>
+                            </button>
+                            <button id="btn-clear-send" class="btn btn-secondary" disabled title="清空发送区输入框内容">
+                                <span>清空</span>
+                            </button>
+                        </div>
+                    </div>
+                    <div id="hex-warning" class="validation-message hidden">
+                        十六进制输入格式不正确！请输入有效的16进制字符对（0-9，A-F，空格）。
+                    </div>
+                </div>
+            </div>
+
+            <!-- Quick Commands panel (Macros) -->
+            <div class="panel macro-panel">
+                <div class="panel-header">
+                    <div class="header-left">
+                        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+                            <line x1="9" y1="3" x2="9" y2="21"/>
+                            <line x1="15" y1="3" x2="15" y2="21"/>
+                            <line x1="3" y1="9" x2="21" y2="9"/>
+                            <line x1="3" y1="15" x2="21" y2="15"/>
+                        </svg>
+                        <span>快捷指令 (Macro Presets)</span>
+                    </div>
+                    <div class="header-actions">
+                        <button id="btn-save-presets" class="btn btn-secondary btn-sm">
+                            <svg class="icon-inline" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v11a2 2 0 01-2 2z"/>
+                                <polyline points="17 21 17 13 7 13 7 21"/>
+                                <polyline points="7 3 7 8 15 8"/>
+                            </svg>
+                            保存配置
+                        </button>
+                    </div>
+                </div>
+                <div class="panel-body macro-body">
+                    <div class="macro-grid">
+                        <!-- Will generate 8 preset slots dynamically in app.js -->
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+    
+    <script src="app.js"></script>
+</body>
+</html>
