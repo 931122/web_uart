@@ -702,6 +702,39 @@ select option {
     background-color: var(--border-color);
 }
 
+/* Mode Selector for Terminal vs Monitor */
+.mode-toggle-group {
+    display: flex;
+    background: rgba(0, 0, 0, 0.3);
+    border: 1px solid var(--border-color);
+    padding: 2px;
+    border-radius: var(--radius-md);
+    margin-left: 14px;
+}
+
+.mode-toggle-btn {
+    border: none;
+    background: none;
+    color: var(--text-muted);
+    font-family: var(--font-sans);
+    font-size: 0.72rem;
+    font-weight: 600;
+    padding: 3px 10px;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: var(--transition-normal);
+}
+
+.mode-toggle-btn:hover {
+    color: var(--text-main);
+}
+
+.mode-toggle-btn.active {
+    background: linear-gradient(135deg, var(--primary), var(--secondary));
+    color: #ffffff;
+    box-shadow: 0 2px 8px rgba(56, 189, 248, 0.3);
+}
+
 /* Terminal Screen */
 .console-body {
     flex-grow: 1;
@@ -725,6 +758,36 @@ select option {
     user-select: text;
     background: #04060b;
 }
+
+#xterm-container {
+    padding: 12px;
+    background: #04060b;
+    overflow: hidden;
+}
+
+#xterm-container.hidden {
+    display: none !important;
+}
+
+/* Custom Scrollbar for xterm */
+.xterm .xterm-viewport::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+
+.xterm .xterm-viewport::-webkit-scrollbar-track {
+    background: rgba(0, 0, 0, 0.1);
+}
+
+.xterm .xterm-viewport::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.15);
+    border-radius: 4px;
+}
+
+.xterm .xterm-viewport::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.25);
+}
+
 
 .terminal-welcome {
     color: var(--text-dark);

@@ -38,11 +38,25 @@ document.addEventListener('DOMContentLoaded', () => {
     let rxChunksBuffer = [];
     let rxFrameTimerId = null;
 
+    // Terminal Mode State Variables
+    let isTerminalMode = false;
+    let xtermInstance = null;
+    let fitAddon = null;
+    
+    // Write queue to prevent stream concurrency issues
+    let writeQueue = [];
+    let isWriting = false;
+
     // --- DOM Elements ---
     const btnSelectPort = document.getElementById('btn-select-port');
     const selectedPortInfo = document.getElementById('selected-port-info');
     const selectBaudrate = document.getElementById('baudrate');
     const customBaudrateInput = document.getElementById('custom-baudrate');
+    const btnModeMonitor = document.getElementById('btn-mode-monitor');
+    const btnModeTerminal = document.getElementById('btn-mode-terminal');
+    const xtermContainer = document.getElementById('xterm-container');
+    const sendPanel = document.querySelector('.send-panel');
+    const macroPanel = document.querySelector('.macro-panel');
     const selectDatabits = document.getElementById('databits');
     const selectStopbits = document.getElementById('stopbits');
     const selectParity = document.getElementById('parity');
@@ -468,6 +482,14 @@ document.addEventListener('DOMContentLoaded', () => {
                         // Active Flash RX indicator
                         flashIndicator(rxFlash);
 
+                        // Direct stream bypass for Interactive Terminal Mode
+                        if (isTerminalMode) {
+                            if (xtermInstance) {
+                                xtermInstance.write(value);
+                            }
+                            continue;
+                        }
+
                         if (!isPaused) {
                             // Append chunk to buffer for frame timeout assembly
                             rxChunksBuffer.push(value);
@@ -737,6 +759,37 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
+    // --- Safe Queue-based Serial Writer ---
+    async function sendRawBytes(byteArray) {
+        if (!port || !port.writable) {
+            return false;
+        }
+        
+        writeQueue.push(byteArray);
+        if (isWriting) return true;
+        
+        isWriting = true;
+        while (writeQueue.length > 0) {
+            const nextBytes = writeQueue.shift();
+            try {
+                const writer = port.writable.getWriter();
+                await writer.write(nextBytes);
+                writer.releaseLock();
+                
+                // UI feedback metrics update
+                txBytes += nextBytes.length;
+                updateMetricsUI();
+                flashIndicator(txFlash);
+            } catch (err) {
+                console.error('Queue writing error:', err);
+                isWriting = false;
+                return false;
+            }
+        }
+        isWriting = false;
+        return true;
+    }
+
     // --- TX Core Operations ---
     async function sendDirect(dataString) {
         if (!port || !port.writable) {
@@ -796,16 +849,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (!byteArray || byteArray.length === 0) return;
 
-        try {
-            const writer = port.writable.getWriter();
-            await writer.write(byteArray);
-            writer.releaseLock();
-
-            // UI feedback
-            txBytes += byteArray.length;
-            updateMetricsUI();
-            flashIndicator(txFlash);
-
+        // Use the safe write queue
+        const success = await sendRawBytes(byteArray);
+        if (success) {
             // Log Tx action to screen
             let displayString = dataString;
             if (txMode === 'hex') {
@@ -818,10 +864,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 displayString = chunks.join(' ');
             }
             logToTerminal('tx', displayString);
-
-        } catch (err) {
-            console.error('发送失败:', err);
-            logToTerminal('error', `发送数据发生错误: ${err.message}`);
+        } else {
+            logToTerminal('error', '发送数据发生错误。');
         }
     }
 
@@ -985,6 +1029,11 @@ document.addEventListener('DOMContentLoaded', () => {
         terminalContainer.innerHTML = '';
         lineCount = 0;
         resetActiveRawSpan();
+        
+        // Clear xterm screen if exists
+        if (xtermInstance) {
+            xtermInstance.clear();
+        }
         
         // Clear cached logs in sessionStorage
         sessionStorage.removeItem('web_uart_session_logs');
@@ -1211,6 +1260,148 @@ document.addEventListener('DOMContentLoaded', () => {
             btn.disabled = !serialConnected;
         });
     }
+
+    // --- xterm.js Initialization (Lazy Loading) ---
+    function initXterm() {
+        if (xtermInstance) return;
+
+        // Verify Terminal is loaded from CDN
+        if (typeof Terminal === 'undefined') {
+            console.error('xterm.js is not loaded from CDN yet!');
+            alert('终端渲染引擎正在加载中，请稍后或刷新重试。');
+            return;
+        }
+
+        xtermInstance = new Terminal({
+            cursorBlink: true,
+            cursorStyle: 'block',
+            fontFamily: '"JetBrains Mono", "Fira Code", Menlo, Monaco, Consolas, monospace',
+            fontSize: 13,
+            theme: {
+                background: '#04060b',
+                foreground: '#f0f4f8',
+                cursor: '#38bdf8',
+                selectionBackground: 'rgba(56, 189, 248, 0.3)',
+                black: '#000000',
+                red: '#f87171',
+                green: '#4ade80',
+                yellow: '#fbbf24',
+                blue: '#60a5fa',
+                magenta: '#c084fc',
+                cyan: '#2dd4bf',
+                white: '#e2e8f0'
+            }
+        });
+
+        fitAddon = new FitAddon.FitAddon();
+        xtermInstance.loadAddon(fitAddon);
+        xtermInstance.open(xtermContainer);
+        fitAddon.fit();
+
+        // Welcome banner for terminal
+        xtermInstance.writeln('\x1b[1;36m*** Web UART 交互式终端模式已激活 ***\x1b[0m');
+        xtermInstance.writeln('\x1b[33m提示：如果连接的是 Linux Shell，请敲击 [回车] 键以激活终端输入。\x1b[0m\r\n');
+
+        // Capture keyboard key inputs and pipe them through the serial write queue
+        xtermInstance.onData(data => {
+            if (!port || !port.writable) {
+                return;
+            }
+            const encoder = new TextEncoder();
+            const byteArray = encoder.encode(data);
+            void sendRawBytes(byteArray);
+        });
+
+        // Auto Copy on Selection in Terminal Mode (mouseup)
+        xtermContainer.addEventListener('mouseup', () => {
+            setTimeout(async () => {
+                if (!xtermInstance) return;
+                const textToCopy = xtermInstance.getSelection();
+                if (textToCopy && textToCopy.trim().length > 0) {
+                    try {
+                        await navigator.clipboard.writeText(textToCopy);
+                        showToast('已自动复制 (终端)');
+                    } catch (err) {
+                        console.error('终端自动复制失败:', err);
+                    }
+                }
+            }, 30);
+        });
+
+        // Right-Click to Paste in Terminal Mode (contextmenu - capture phase on window to guarantee bypass)
+        window.addEventListener('contextmenu', async (event) => {
+            if (event.target && event.target.closest && event.target.closest('#xterm-container')) {
+                event.preventDefault(); // Prevent standard browser right-click menu
+                event.stopPropagation(); // Stop event propagation
+                if (!port || !port.writable) {
+                    return;
+                }
+                try {
+                    const text = await navigator.clipboard.readText();
+                    if (text) {
+                        const encoder = new TextEncoder();
+                        const byteArray = encoder.encode(text);
+                        void sendRawBytes(byteArray);
+                    }
+                } catch (err) {
+                    console.error('终端右键粘贴读取剪贴板失败:', err);
+                    alert('粘贴失败，请确保已授予浏览器剪贴板读取权限！');
+                }
+            }
+        }, true);
+    }
+
+    // --- Mode Switching UI Actions ---
+    function switchMode(mode) {
+        if (mode === 'terminal') {
+            isTerminalMode = true;
+            btnModeMonitor.classList.remove('active');
+            btnModeTerminal.classList.add('active');
+            
+            terminalContainer.classList.add('hidden');
+            xtermContainer.classList.remove('hidden');
+            
+            // Hide the send configuration & macro preset panels to let terminal expand to 100% height
+            if (sendPanel) sendPanel.classList.add('hidden');
+            if (macroPanel) macroPanel.classList.add('hidden');
+            
+            initXterm();
+            
+            // Adjust layouts after rendering completes
+            setTimeout(() => {
+                if (fitAddon) {
+                    fitAddon.fit();
+                    xtermInstance.focus();
+                }
+            }, 60);
+        } else {
+            isTerminalMode = false;
+            btnModeTerminal.classList.remove('active');
+            btnModeMonitor.classList.add('active');
+            
+            xtermContainer.classList.add('hidden');
+            terminalContainer.classList.remove('hidden');
+            
+            // Show the send configuration & macro preset panels back
+            if (sendPanel) sendPanel.classList.remove('hidden');
+            if (macroPanel) macroPanel.classList.remove('hidden');
+            
+            // Scroll normal logger to bottom
+            if (chkAutoscroll.checked) {
+                terminalContainer.scrollTop = terminalContainer.scrollHeight;
+            }
+        }
+    }
+
+    btnModeMonitor.addEventListener('click', () => switchMode('monitor'));
+    btnModeTerminal.addEventListener('click', () => switchMode('terminal'));
+
+    // Handle Window Resizing for xterm.js
+    window.addEventListener('resize', () => {
+        if (isTerminalMode && fitAddon) {
+            fitAddon.fit();
+        }
+    });
 
     // --- Initialise Presets Layout rendering ---
     renderMacros();

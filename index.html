@@ -10,6 +10,8 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="style.css">
+    <!-- xterm.css for Interactive Terminal Mode -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.css" />
 </head>
 <body>
     <div id="unsupported-browser-overlay" class="overlay hidden">
@@ -231,6 +233,10 @@
                             <span class="dot dot-green"></span>
                         </span>
                         <span class="panel-title">串口数据监控终端</span>
+                        <div class="mode-toggle-group">
+                            <button id="btn-mode-monitor" class="mode-toggle-btn active" title="常规监控模式：支持数据过滤、HEX/TXT切换与历史日志">监控模式</button>
+                            <button id="btn-mode-terminal" class="mode-toggle-btn" title="交互终端模式：如同 SSH 般直接输入和执行 Linux 命令">终端模式</button>
+                        </div>
                         <div id="rx-flash" class="rx-flash-indicator">RX ACTIVE</div>
                     </div>
                     <div class="header-actions">
@@ -284,6 +290,7 @@
                 </div>
                 <div class="panel-body console-body">
                     <div id="terminal-container" class="terminal-screen"></div>
+                    <div id="xterm-container" class="terminal-screen hidden"></div>
                 </div>
             </div>
 
@@ -376,6 +383,9 @@
         </main>
     </div>
     
+    <!-- xterm.js & fit addon for Interactive Terminal Mode -->
+    <script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.js"></script>
     <script src="app.js"></script>
 </body>
 </html>
