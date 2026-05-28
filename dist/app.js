@@ -1328,31 +1328,47 @@ document.addEventListener('DOMContentLoaded', () => {
             }, 30);
         });
 
-        // Right-Click to Paste in Terminal Mode (contextmenu - capture phase on window to guarantee bypass)
+        // Clipboard Paste Core Helper Function
+        async function pasteFromClipboard() {
+            if (!port || !port.writable) {
+                return;
+            }
+            try {
+                const text = await navigator.clipboard.readText();
+                if (text) {
+                    const encoder = new TextEncoder();
+                    const byteArray = encoder.encode(text);
+                    void sendRawBytes(byteArray);
+                }
+                // Refocus xterm instance to prevent keyboard input disruption
+                if (xtermInstance) {
+                    xtermInstance.focus();
+                }
+            } catch (err) {
+                console.error('读取剪贴板失败:', err);
+                alert('粘贴失败，请确保已授予浏览器剪贴板读取权限！');
+            }
+        }
+
+        // 1. Right-Click to Paste (contextmenu - capture phase on window to guarantee bypass)
         window.addEventListener('contextmenu', async (event) => {
             if (event.target && event.target.closest && event.target.closest('#xterm-container')) {
                 event.preventDefault(); // Prevent standard browser right-click menu
                 event.stopPropagation(); // Stop event propagation
-                if (!port || !port.writable) {
-                    return;
-                }
-                try {
-                    const text = await navigator.clipboard.readText();
-                    if (text) {
-                        const encoder = new TextEncoder();
-                        const byteArray = encoder.encode(text);
-                        void sendRawBytes(byteArray);
-                    }
-                    // Prevent terminal focus loss after pasting
-                    if (xtermInstance) {
-                        xtermInstance.focus();
-                    }
-                } catch (err) {
-                    console.error('终端右键粘贴读取剪贴板失败:', err);
-                    alert('粘贴失败，请确保已授予浏览器剪贴板读取权限！');
-                }
+                void pasteFromClipboard();
             }
         }, true);
+
+        // 2. Keyboard Paste Shortcuts (Cmd+V on Mac / Ctrl+V on Windows & Linux)
+        xtermInstance.attachCustomKeyEventHandler((event) => {
+            if ((event.ctrlKey || event.metaKey) && event.key === 'v') {
+                if (event.type === 'keydown') {
+                    void pasteFromClipboard();
+                }
+                return false; // Prevent xterm.js default keystroke processing
+            }
+            return true; // Pass through all other keys
+        });
     }
 
     // --- Mode Switching UI Actions ---
