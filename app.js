@@ -1343,6 +1343,10 @@ document.addEventListener('DOMContentLoaded', () => {
                         const byteArray = encoder.encode(text);
                         void sendRawBytes(byteArray);
                     }
+                    // Prevent terminal focus loss after pasting
+                    if (xtermInstance) {
+                        xtermInstance.focus();
+                    }
                 } catch (err) {
                     console.error('终端右键粘贴读取剪贴板失败:', err);
                     alert('粘贴失败，请确保已授予浏览器剪贴板读取权限！');
